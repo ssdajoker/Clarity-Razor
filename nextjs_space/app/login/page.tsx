@@ -43,8 +43,8 @@ export default function LoginPage() {
         <div className="flex items-center justify-center mb-8">
           <Sword className="h-10 w-10 text-blue-700 mr-3" />
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Falchion Forge</h1>
-            <p className="text-sm text-gray-600">Falchion-Clarity Tile</p>
+            <h1 className="text-3xl font-bold text-gray-900">Clarity</h1>
+            <p className="text-sm text-gray-600">Clarity Tile Generator</p>
           </div>
         </div>
 

@@ -7,7 +7,7 @@ import { prisma } from '@/lib/db'
 import { getFileUrl, deleteFile } from '@/lib/s3'
 import { decryptFileBuffer } from '@/lib/crypto-utils'
 
-const SYSTEM_MESSAGE = `You are Lead Falchion. Your task is to transform messy user input into a structured Clarity Tile.
+const SYSTEM_MESSAGE = `You are Clarity AI. Your task is to transform messy user input into a structured Clarity Tile.
 
 Output ONLY valid JSON matching this exact schema:
 {

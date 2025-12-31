@@ -8,14 +8,14 @@ const inter = Inter({ subsets: ['latin'] })
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Falchion Forge - Clarity Tile Generator',
+  title: 'Clarity - Clarity Tile Generator',
   description: 'Transform messy input into structured Clarity Tiles using AI',
   icons: {
     icon: '/favicon.svg',
     shortcut: '/favicon.svg',
   },
   openGraph: {
-    title: 'Falchion Forge',
+    title: 'Clarity',
     description: 'Transform messy input into structured Clarity Tiles using AI',
     images: ['/og-image.png'],
   },

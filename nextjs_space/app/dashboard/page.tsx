@@ -217,8 +217,8 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <Sword className="h-8 w-8 text-blue-700" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Falchion Forge</h1>
-              <p className="text-sm text-gray-600">Falchion-Clarity Tile</p>
+              <h1 className="text-2xl font-bold text-gray-900">Clarity</h1>
+              <p className="text-sm text-gray-600">Clarity Tile Generator</p>
             </div>
           </div>
 

@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/json",
-        "Content-Disposition": `attachment; filename="falchion-forge-data-export-${Date.now()}.json"`,
+        "Content-Disposition": `attachment; filename="clarity-data-export-${Date.now()}.json"`,
       },
     });
   } catch (error) {
