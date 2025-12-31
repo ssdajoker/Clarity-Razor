@@ -35,6 +35,7 @@ export default function DashboardPage() {
   const [tiles, setTiles] = useState<TileData[]>([])
   const [tilesLoading, setTilesLoading] = useState(true)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
+  const [encryptionPassword, setEncryptionPassword] = useState("")
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -90,6 +91,7 @@ export default function DashboardPage() {
           context_dump: contextDump,
           mode,
           fileIds: uploadedFiles.map((f) => f.id),
+          encryptionPassword: encryptionPassword || null,
         }),
       })
 
@@ -317,6 +319,7 @@ export default function DashboardPage() {
                   onFilesUploaded={handleFilesUploaded}
                   uploadedFiles={uploadedFiles}
                   onRemoveFile={handleRemoveFile}
+                  onEncryptionPasswordChange={setEncryptionPassword}
                 />
               </div>
 

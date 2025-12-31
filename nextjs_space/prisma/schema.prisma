@@ -75,19 +75,45 @@ model Tile {
 }
 
 model File {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   userId             String
-  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   tileId             String?
-  tile               Tile?    @relation(fields: [tileId], references: [id], onDelete: Cascade)
+  tile               Tile?     @relation(fields: [tileId], references: [id], onDelete: Cascade)
   fileName           String
   originalName       String
   fileSize           Int
   mimeType           String
   cloud_storage_path String
-  isPublic           Boolean  @default(false)
-  createdAt          DateTime @default(now())
+  isPublic           Boolean   @default(false)
+  // Security fields
+  fileHash           String?   // SHA-256 hash for integrity
+  encrypted          Boolean   @default(false)
+  encryptionKey      String?   // Encrypted with user's master key
+  deleteAfterUse     Boolean   @default(false)
+  expiresAt          DateTime? // Auto-delete timestamp
+  accessCount        Int       @default(0)
+  lastAccessedAt     DateTime?
+  createdAt          DateTime  @default(now())
+  auditLogs          FileAuditLog[]
 
   @@index([userId])
   @@index([tileId])
+  @@index([expiresAt])
+}
+
+model FileAuditLog {
+  id        String   @id @default(cuid())
+  fileId    String
+  file      File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  userId    String
+  action    String   // UPLOAD, ACCESS, DELETE, DOWNLOAD
+  metadata  Json?    // Additional context
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([fileId])
+  @@index([userId])
+  @@index([createdAt])
 }

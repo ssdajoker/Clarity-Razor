@@ -29,6 +29,11 @@ export async function POST(request: NextRequest) {
       mimeType,
       isPublic = false,
       tileId = null,
+      fileHash = null,
+      encrypted = false,
+      encryptionKey = null,
+      deleteAfterUse = false,
+      expiresAt = null,
     } = body;
 
     if (!cloud_storage_path || !fileName || !originalName || !mimeType) {
@@ -48,6 +53,28 @@ export async function POST(request: NextRequest) {
         mimeType,
         cloud_storage_path,
         isPublic,
+        fileHash,
+        encrypted,
+        encryptionKey,
+        deleteAfterUse,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+      },
+    });
+
+    // Create audit log
+    await prisma.fileAuditLog.create({
+      data: {
+        fileId: file.id,
+        userId: user.id,
+        action: "UPLOAD",
+        metadata: {
+          encrypted,
+          deleteAfterUse,
+          expiresAt,
+          fileSize,
+        },
+        ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown",
+        userAgent: request.headers.get("user-agent") || "unknown",
       },
     });
 

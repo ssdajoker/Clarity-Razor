@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/db'
-import { getFileUrl } from '@/lib/s3'
+import { getFileUrl, deleteFile } from '@/lib/s3'
+import { decryptFileBuffer } from '@/lib/crypto-utils'
 
 const SYSTEM_MESSAGE = `You are Lead Falchion. Your task is to transform messy user input into a structured Clarity Tile.
 
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { objective, constraints, context_dump, mode, fileIds = [] } = body
+    const { objective, constraints, context_dump, mode, fileIds = [], encryptionPassword = null } = body
 
     if (!objective) {
       return NextResponse.json(
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
     // Process uploaded files if any
     let filesContext = ''
     const messages: any[] = [{ role: 'system', content: SYSTEM_MESSAGE }]
+    const filesToDelete: string[] = []
     
     if (fileIds.length > 0) {
       const files = await prisma.file.findMany({
@@ -58,15 +60,62 @@ export async function POST(request: NextRequest) {
       })
 
       for (const file of files) {
+        // Track files for deletion if needed
+        if (file.deleteAfterUse) {
+          filesToDelete.push(file.id)
+        }
+
+        // Update access tracking
+        await prisma.file.update({
+          where: { id: file.id },
+          data: {
+            accessCount: { increment: 1 },
+            lastAccessedAt: new Date(),
+          },
+        })
+
+        // Create audit log
+        await prisma.fileAuditLog.create({
+          data: {
+            fileId: file.id,
+            userId: session.user.id || '',
+            action: 'ACCESS',
+            metadata: { context: 'tile_generation' },
+            ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown",
+            userAgent: request.headers.get("user-agent") || "unknown",
+          },
+        })
+
         const fileUrl = await getFileUrl(file.cloud_storage_path, file.isPublic)
+        let fileBuffer: ArrayBuffer | null = null
         
-        // Handle PDFs - send as base64 to LLM
-        if (file.mimeType === 'application/pdf') {
-          try {
-            const fileResponse = await fetch(fileUrl)
-            const arrayBuffer = await fileResponse.arrayBuffer()
-            const base64 = Buffer.from(arrayBuffer).toString('base64')
-            
+        try {
+          const fileResponse = await fetch(fileUrl)
+          let fetchedBuffer = await fileResponse.arrayBuffer()
+
+          // Decrypt if encrypted
+          if (file.encrypted && encryptionPassword && file.encryptionKey) {
+            try {
+              const encryptionMetadata = JSON.parse(file.encryptionKey)
+              fetchedBuffer = await decryptFileBuffer(
+                fetchedBuffer,
+                encryptionPassword,
+                encryptionMetadata.salt,
+                encryptionMetadata.iv
+              )
+              filesContext += `\n\n🔓 File: ${file.originalName} (Decrypted)`
+            } catch (decryptError) {
+              console.error(`Decryption failed for ${file.originalName}:`, decryptError)
+              filesContext += `\n\n❌ File: ${file.originalName} (Decryption failed - wrong password?)`
+              continue
+            }
+          }
+
+          fileBuffer = fetchedBuffer
+
+          // Handle PDFs - send as base64 to LLM
+          if (file.mimeType === 'application/pdf') {
+            const base64 = Buffer.from(fileBuffer).toString('base64')
             filesContext += `\n\nFile: ${file.originalName} (PDF)`
             messages.push({
               role: 'user',
@@ -78,51 +127,56 @@ export async function POST(request: NextRequest) {
                 }
               ]
             })
-          } catch (error) {
-            console.error(`Error processing PDF ${file.originalName}:`, error)
-            filesContext += `\n\nFile: ${file.originalName} (PDF - processing failed)`
           }
-        }
-        // Handle images - send as base64 to LLM
-        else if (file.mimeType.startsWith('image/')) {
-          try {
+          // Handle images - send to LLM
+          else if (file.mimeType.startsWith('image/')) {
             filesContext += `\n\nFile: ${file.originalName} (Image)`
-            messages.push({
-              role: 'user',
-              content: [
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: fileUrl
+            // For encrypted images, we'd need to convert buffer to base64
+            if (file.encrypted) {
+              const base64 = Buffer.from(fileBuffer).toString('base64')
+              messages.push({
+                role: 'user',
+                content: [
+                  {
+                    type: 'image_url',
+                    image_url: {
+                      url: `data:${file.mimeType};base64,${base64}`
+                    }
                   }
-                }
-              ]
-            })
-          } catch (error) {
-            console.error(`Error processing image ${file.originalName}:`, error)
-            filesContext += `\n\nFile: ${file.originalName} (Image - processing failed)`
+                ]
+              })
+            } else {
+              messages.push({
+                role: 'user',
+                content: [
+                  {
+                    type: 'image_url',
+                    image_url: {
+                      url: fileUrl
+                    }
+                  }
+                ]
+              })
+            }
           }
-        }
-        // Handle text files - download and include content
-        else if (file.mimeType.startsWith('text/') || 
-                 file.mimeType.includes('json') || 
-                 file.mimeType.includes('javascript') ||
-                 file.mimeType.includes('typescript') ||
-                 file.mimeType.includes('python') ||
-                 file.mimeType.includes('xml') ||
-                 file.mimeType.includes('html')) {
-          try {
-            const fileResponse = await fetch(fileUrl)
-            const textContent = await fileResponse.text()
+          // Handle text files - download and include content
+          else if (file.mimeType.startsWith('text/') || 
+                   file.mimeType.includes('json') || 
+                   file.mimeType.includes('javascript') ||
+                   file.mimeType.includes('typescript') ||
+                   file.mimeType.includes('python') ||
+                   file.mimeType.includes('xml') ||
+                   file.mimeType.includes('html')) {
+            const textContent = new TextDecoder().decode(fileBuffer)
             filesContext += `\n\nFile: ${file.originalName}\nContent:\n${textContent.slice(0, 10000)}\n`
-          } catch (error) {
-            console.error(`Error processing text file ${file.originalName}:`, error)
-            filesContext += `\n\nFile: ${file.originalName} (Text file - processing failed)`
           }
-        }
-        // For other file types, just include metadata
-        else {
-          filesContext += `\n\nFile: ${file.originalName} (${file.mimeType}) - ${(file.fileSize / 1024).toFixed(2)} KB`
+          // For other file types, just include metadata
+          else {
+            filesContext += `\n\nFile: ${file.originalName} (${file.mimeType}) - ${(file.fileSize / 1024).toFixed(2)} KB`
+          }
+        } catch (error) {
+          console.error(`Error processing file ${file.originalName}:`, error)
+          filesContext += `\n\n❌ File: ${file.originalName} (Processing failed)`
         }
       }
     }
@@ -233,6 +287,37 @@ Please analyze this and create a structured Clarity Tile following the JSON sche
                       result: finalResult
                     })
                     controller.enqueue(encoder.encode(`data: ${finalData}\n\n`))
+                    
+                    // Delete files marked for ephemeral deletion
+                    if (filesToDelete.length > 0) {
+                      try {
+                        for (const fileId of filesToDelete) {
+                          const file = await prisma.file.findUnique({ where: { id: fileId } })
+                          if (file) {
+                            // Delete from S3
+                            await deleteFile(file.cloud_storage_path)
+                            
+                            // Create audit log
+                            await prisma.fileAuditLog.create({
+                              data: {
+                                fileId: file.id,
+                                userId: session.user?.id || '',
+                                action: 'DELETE',
+                                metadata: { reason: 'ephemeral_deletion_after_processing' },
+                                ipAddress: request.headers.get("x-forwarded-for") || "unknown",
+                                userAgent: request.headers.get("user-agent") || "unknown",
+                              },
+                            })
+                            
+                            // Delete from database
+                            await prisma.file.delete({ where: { id: fileId } })
+                          }
+                        }
+                        console.log(`Deleted ${filesToDelete.length} ephemeral file(s)`)
+                      } catch (deleteError) {
+                        console.error('Error deleting ephemeral files:', deleteError)
+                      }
+                    }
                   } catch (parseError) {
                     console.error('JSON parse error:', parseError)
                     const errorData = JSON.stringify({
