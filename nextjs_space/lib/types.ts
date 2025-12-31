@@ -1,28 +1,32 @@
-export type Expense = {
-  id: string
-  amount: number
-  category: string
-  description: string
-  date: Date
+export interface ClarityTile {
+  objective: string;
+  constraints: string[];
+  deletion_pass: string[];
+  five_step_flow: string[];
+  single_next_action: string;
+  metrics: string[];
+  feedback_loop: string;
+  assumptions: string[];
+  followup_questions?: string[];
 }
 
-export type ExpenseFormData = Omit<Expense, 'id' | 'date'> & {
-  date: string
+export interface UploadedFile {
+  id: string;
+  fileName: string;
+  originalName: string;
+  fileSize: number;
+  mimeType: string;
+  cloud_storage_path: string;
+  isPublic: boolean;
+  createdAt: string;
 }
 
-export const EXPENSE_CATEGORIES = [
-  'Food',
-  'Transportation',
-  'Housing',
-  'Utilities',
-  'Entertainment',
-  'Healthcare',
-  'Shopping',
-  'Education',
-  'Other'
-] as const
-
-export type DateRange = {
-  from: Date | undefined
-  to: Date | undefined
+export interface TileWithFiles {
+  id: string;
+  mode: string;
+  rawInput: any;
+  tileJson: any;
+  tags: string[];
+  createdAt: string;
+  files: UploadedFile[];
 }

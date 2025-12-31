@@ -7,7 +7,9 @@ import { Sword, LogOut, Loader2, Send, FileText, Download } from 'lucide-react'
 import { ClarityTile } from '@/components/clarity-tile'
 import { SessionTimer } from '@/components/session-timer'
 import { TileVault } from '@/components/tile-vault'
+import { FileUploader } from '@/components/file-uploader'
 import { exportAsMarkdown, exportAsJSON, downloadFile } from '@/lib/export-utils'
+import { UploadedFile } from '@/lib/types'
 
 interface TileData {
   id: string
@@ -32,6 +34,7 @@ export default function DashboardPage() {
   const [timerRunning, setTimerRunning] = useState(false)
   const [tiles, setTiles] = useState<TileData[]>([])
   const [tilesLoading, setTilesLoading] = useState(true)
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -63,6 +66,14 @@ export default function DashboardPage() {
     }
   }, [status])
 
+  const handleFilesUploaded = (newFiles: UploadedFile[]) => {
+    setUploadedFiles((prev) => [...prev, ...newFiles])
+  }
+
+  const handleRemoveFile = (fileId: string) => {
+    setUploadedFiles((prev) => prev.filter((f) => f.id !== fileId))
+  }
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -78,6 +89,7 @@ export default function DashboardPage() {
           constraints,
           context_dump: contextDump,
           mode,
+          fileIds: uploadedFiles.map((f) => f.id),
         }),
       })
 
@@ -294,6 +306,18 @@ export default function DashboardPage() {
                   <option value="Connection Hunt">Connection Hunt</option>
                   <option value="DeepAgent Task Spec">DeepAgent Task Spec</option>
                 </select>
+              </div>
+
+              {/* File Uploader */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Upload Files (Optional)
+                </label>
+                <FileUploader
+                  onFilesUploaded={handleFilesUploaded}
+                  uploadedFiles={uploadedFiles}
+                  onRemoveFile={handleRemoveFile}
+                />
               </div>
 
               <button

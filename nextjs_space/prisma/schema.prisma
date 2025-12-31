@@ -47,6 +47,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   tiles         Tile[]
+  files         File[]
 }
 
 model VerificationToken {
@@ -67,7 +68,26 @@ model Tile {
   rawInput  Json     // {objective, constraints, context_dump}
   tileJson  Json     // LLM-generated structured output
   tags      String[] @default([])
+  files     File[]
 
   @@index([userId])
   @@index([createdAt])
+}
+
+model File {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tileId             String?
+  tile               Tile?    @relation(fields: [tileId], references: [id], onDelete: Cascade)
+  fileName           String
+  originalName       String
+  fileSize           Int
+  mimeType           String
+  cloud_storage_path String
+  isPublic           Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  @@index([userId])
+  @@index([tileId])
 }

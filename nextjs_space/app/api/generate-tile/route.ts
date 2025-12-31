@@ -3,6 +3,8 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
+import { prisma } from '@/lib/db'
+import { getFileUrl } from '@/lib/s3'
 
 const SYSTEM_MESSAGE = `You are Lead Falchion. Your task is to transform messy user input into a structured Clarity Tile.
 
@@ -37,13 +39,92 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { objective, constraints, context_dump, mode } = body
+    const { objective, constraints, context_dump, mode, fileIds = [] } = body
 
     if (!objective) {
       return NextResponse.json(
         { error: 'Objective is required' },
         { status: 400 }
       )
+    }
+
+    // Process uploaded files if any
+    let filesContext = ''
+    const messages: any[] = [{ role: 'system', content: SYSTEM_MESSAGE }]
+    
+    if (fileIds.length > 0) {
+      const files = await prisma.file.findMany({
+        where: { id: { in: fileIds } }
+      })
+
+      for (const file of files) {
+        const fileUrl = await getFileUrl(file.cloud_storage_path, file.isPublic)
+        
+        // Handle PDFs - send as base64 to LLM
+        if (file.mimeType === 'application/pdf') {
+          try {
+            const fileResponse = await fetch(fileUrl)
+            const arrayBuffer = await fileResponse.arrayBuffer()
+            const base64 = Buffer.from(arrayBuffer).toString('base64')
+            
+            filesContext += `\n\nFile: ${file.originalName} (PDF)`
+            messages.push({
+              role: 'user',
+              content: [
+                {
+                  type: 'file',
+                  content_type: 'application/pdf',
+                  data: base64
+                }
+              ]
+            })
+          } catch (error) {
+            console.error(`Error processing PDF ${file.originalName}:`, error)
+            filesContext += `\n\nFile: ${file.originalName} (PDF - processing failed)`
+          }
+        }
+        // Handle images - send as base64 to LLM
+        else if (file.mimeType.startsWith('image/')) {
+          try {
+            filesContext += `\n\nFile: ${file.originalName} (Image)`
+            messages.push({
+              role: 'user',
+              content: [
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: fileUrl
+                  }
+                }
+              ]
+            })
+          } catch (error) {
+            console.error(`Error processing image ${file.originalName}:`, error)
+            filesContext += `\n\nFile: ${file.originalName} (Image - processing failed)`
+          }
+        }
+        // Handle text files - download and include content
+        else if (file.mimeType.startsWith('text/') || 
+                 file.mimeType.includes('json') || 
+                 file.mimeType.includes('javascript') ||
+                 file.mimeType.includes('typescript') ||
+                 file.mimeType.includes('python') ||
+                 file.mimeType.includes('xml') ||
+                 file.mimeType.includes('html')) {
+          try {
+            const fileResponse = await fetch(fileUrl)
+            const textContent = await fileResponse.text()
+            filesContext += `\n\nFile: ${file.originalName}\nContent:\n${textContent.slice(0, 10000)}\n`
+          } catch (error) {
+            console.error(`Error processing text file ${file.originalName}:`, error)
+            filesContext += `\n\nFile: ${file.originalName} (Text file - processing failed)`
+          }
+        }
+        // For other file types, just include metadata
+        else {
+          filesContext += `\n\nFile: ${file.originalName} (${file.mimeType}) - ${(file.fileSize / 1024).toFixed(2)} KB`
+        }
+      }
     }
 
     // Construct user message
@@ -56,8 +137,11 @@ ${constraints || 'None specified'}
 
 Context:
 ${context_dump || 'None specified'}
+${filesContext}
 
 Please analyze this and create a structured Clarity Tile following the JSON schema provided.`
+    
+    messages.push({ role: 'user', content: userMessage })
 
     // Call LLM API with streaming
     const response = await fetch('https://apps.abacus.ai/v1/chat/completions', {
@@ -68,10 +152,7 @@ Please analyze this and create a structured Clarity Tile following the JSON sche
       },
       body: JSON.stringify({
         model: 'gpt-4.1-mini',
-        messages: [
-          { role: 'system', content: SYSTEM_MESSAGE },
-          { role: 'user', content: userMessage }
-        ],
+        messages: messages,
         response_format: { type: 'json_object' },
         stream: true,
         max_tokens: 3000,
