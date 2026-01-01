@@ -1,7 +1,7 @@
 generator client {
     provider = "prisma-client-js"
     binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
-    output = "/home/ubuntu/falchion_forge/nextjs_space/node_modules/.prisma/client"
+    output = "/home/ubuntu/clarity-razor/nextjs_space/node_modules/.prisma/client"
 }
 
 datasource db {
